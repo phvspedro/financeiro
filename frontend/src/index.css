@@ -16,3 +16,10 @@ body { @apply bg-slate-100 text-slate-800 antialiased; }
 .swal2-container, .swal2-popup { font-family: inherit; }
 .swal2-title { font-size: 1.25rem; }
 .swal2-html-container { font-size: 0.95rem; }
+
+/* Celular: campos com 16px evitam o zoom automático do iOS; sem flash cinza ao tocar */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px; }
+}
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }

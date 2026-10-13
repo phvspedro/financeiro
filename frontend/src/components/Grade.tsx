@@ -1,8 +1,11 @@
-import { ArrowDown, ArrowUp, Check, CheckCheck, GripVertical, Lock, LockOpen, Plus, Repeat, Trash2 } from 'lucide-react'
+import { Check, CheckCheck, GripVertical, Lock, LockOpen, Plus, Repeat, Trash2 } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
-import { arred, brl, chaveItem, fmtVencimento, hojeISO, lerValor, lerVencimento, numero, statusVencimento, textoVencimento } from '../lib/money'
+import { arred, brl, chaveItem, hojeISO, lerValor, lerVencimento, numero, statusVencimento, textoVencimento } from '../lib/money'
+import { useMovel } from '../lib/useMovel'
 import type { Grupo, Lancamento, ValoresAnteriores } from '../lib/types'
 import { Celula, type Direcao } from './Celula'
+import { Variacao, Vencimento } from './Indicadores'
+import { ListaMovel } from './ListaMovel'
 import { InfoTipo, TipoCelula, TipoMenu } from './TipoCelula'
 
 export interface AcoesGrade {
@@ -58,6 +61,7 @@ interface Props {
 const vazio = <span className="text-slate-300">–</span>
 
 export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check, parcelas, essencial, vencimento, ano, mes, anterior, className = '', abas, nomeAba, novoItem, categoriaFixos, rotuloFixo = 'Fixo: repete todo mês', rodape }: Props) {
+  const movel = useMovel()
   const tabela = useRef<HTMLDivElement>(null)
   // Menu do tipo/categoria: aberto pela célula da coluna Tipo ou pelo ícone ao lado do cadeado
   const [tipoAberto, setTipoAberto] = useState<{ id: number; r: number; ancora: HTMLElement } | null>(null)
@@ -160,6 +164,28 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
 
       {abas}
 
+      {movel ? (
+        <ListaMovel
+          itens={itens}
+          grupo={grupo}
+          acoes={acoes}
+          ano={ano}
+          mes={mes}
+          anterior={anterior}
+          hoje={hoje}
+          check={check}
+          orcamento={orcamento}
+          parcelas={parcelas}
+          vencimento={vencimento}
+          essencial={essencial}
+          categoriaFixos={categoriaFixos}
+          rotuloFixo={rotuloFixo}
+          novoItem={novoItem}
+          totalValor={totalValor}
+          totalReal={totalReal}
+          abrirTipo={(item, ancora) => setTipoAberto({ id: item.id, r: itens.indexOf(item), ancora })}
+        />
+      ) : (
       <div ref={tabela} className="min-h-0 flex-1 overflow-auto text-sm">
         <div className="flex min-h-full min-w-fit flex-col">
           {/* Cabeçalho das colunas (fica fixo ao rolar) */}
@@ -404,6 +430,7 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
           </div>
         </div>
       </div>
+      )}
       {rodape && <footer className="shrink-0 border-t border-slate-200 px-3 py-2 text-sm">{rodape}</footer>}
 
       {tipoAberto && itens.some((i) => i.id === tipoAberto.id) && (
@@ -426,50 +453,5 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
         />
       )}
     </section>
-  )
-}
-
-/** Setinha quando o valor mudou em relação ao mês anterior (ou ponto quando o item é novo) */
-function Variacao({ atual, antes, temAnterior, entrada }: { atual: number; antes?: number; temAnterior: boolean; entrada: boolean }) {
-  if (!temAnterior) return null
-  if (antes === undefined) {
-    return <span className="mr-auto h-1.5 w-1.5 rounded-full bg-blue-500" title="Novo: não existia no mês anterior" />
-  }
-  const dif = arred(atual - antes)
-  if (Math.abs(dif) < 0.005) return null
-  // Para gastos, subir é ruim (vermelho); para entradas, subir é bom (verde)
-  const ruim = entrada ? dif < 0 : dif > 0
-  const Icone = dif > 0 ? ArrowUp : ArrowDown
-  return (
-    <span
-      className={`mr-auto flex items-center text-[10px] font-semibold ${ruim ? 'text-red-600' : 'text-green-700'}`}
-      title={`Mês anterior: ${brl(antes)} (${dif > 0 ? '+' : ''}${brl(dif)})`}
-    >
-      <Icone size={12} />
-    </span>
-  )
-}
-
-const ROTULO_STATUS = { atrasado: 'Atrasado', hoje: 'Vence hoje', breve: 'Vence em breve', ok: 'No prazo', pago: 'Pago' }
-
-/** Data de vencimento com cor pela urgência: atrasado (vermelho), até 3 dias (âmbar), pago (apagado) */
-function Vencimento({ item, hoje, ano }: { item: Lancamento; hoje: string; ano: number }) {
-  const situacao = statusVencimento(item, hoje)
-  if (!situacao) return <span className="mx-auto text-slate-300">–</span>
-
-  const { status, dias } = situacao
-  const estilo = {
-    atrasado: 'bg-red-100 font-bold text-red-700',
-    hoje: 'bg-amber-200 font-bold text-amber-900',
-    breve: 'bg-amber-100 font-semibold text-amber-800',
-    ok: 'text-slate-600',
-    pago: 'text-slate-400 line-through decoration-slate-300',
-  }[status]
-  const detalhe = status === 'atrasado' ? `há ${-dias} ${dias === -1 ? 'dia' : 'dias'}` : status === 'breve' || status === 'ok' ? `em ${dias} ${dias === 1 ? 'dia' : 'dias'}` : ''
-
-  return (
-    <span className={`mx-auto rounded px-1.5 py-0.5 ${estilo}`} title={`${ROTULO_STATUS[status]}${detalhe ? ` (${detalhe})` : ''} · ${item.vencimento!.split('-').reverse().join('/')}`}>
-      {fmtVencimento(item.vencimento, ano)}
-    </span>
   )
 }

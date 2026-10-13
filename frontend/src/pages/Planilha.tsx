@@ -1,4 +1,4 @@
-import { CalendarPlus, CopyPlus, History, Keyboard, Loader2, Redo2, StickyNote, Undo2 } from 'lucide-react'
+import { ArrowDownCircle, CalendarPlus, CopyPlus, CreditCard, History, Keyboard, Loader2, Redo2, StickyNote, Undo2, Zap } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AbasTipo, filtrarPorAba, novoItemDaAba, useAba } from '../components/AbasTipo'
 import { Grade, type AcoesGrade } from '../components/Grade'
@@ -30,6 +30,8 @@ export function Planilha({ ano, mes, avisar }: Props) {
   const [abaCartao, setAbaCartao] = useAba('cartao')
   const [abaPix, setAbaPix] = useAba('pix')
   const [pilha, setPilha] = useState<Pilha>({ desfazer: null, refazer: null })
+  // No celular só uma das três tabelas aparece por vez
+  const [abaMovel, setAbaMovel] = useState<'saida' | 'cartao' | 'pix'>('saida')
 
   const url = `/meses/${ano}/${mes}`
   const urlAtual = useRef(url)
@@ -277,7 +279,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
           <Keyboard size={14} />
           Clique duas vezes ou comece a digitar para editar · <b>Enter</b> desce · <b>Tab</b> avança · setas navegam · aceita contas como <code className="rounded bg-slate-200 px-1">540+60</code>
         </p>
-        <div className="ml-auto flex flex-wrap gap-2">
+        <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 md:mx-0 md:ml-auto md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
           <button onClick={() => setNotas(!notas)} className={`${botao} ${notas ? 'bg-slate-100' : ''}`} title="Anotações do mês">
             <StickyNote size={14} /> Anotações
             {obs.trim() && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
@@ -310,6 +312,24 @@ export function Planilha({ ano, mes, avisar }: Props) {
         </div>
       </div>
 
+      <nav className="grid shrink-0 grid-cols-3 gap-1 rounded-xl bg-slate-200/70 p-1 text-sm font-semibold md:hidden" aria-label="Tabelas do mês">
+        {(
+          [
+            ['saida', 'Saídas', <ArrowDownCircle size={15} key="s" />],
+            ['cartao', 'Cartão', <CreditCard size={15} key="c" />],
+            ['pix', 'PIX', <Zap size={15} key="p" />],
+          ] as const
+        ).map(([id, nome, icone]) => (
+          <button
+            key={id}
+            onClick={() => setAbaMovel(id)}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 ${abaMovel === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+          >
+            {icone} {nome}
+          </button>
+        ))}
+      </nav>
+
       {notas && (
         <textarea
           autoFocus
@@ -326,7 +346,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
       {/* breakpoints em rem: o Tailwind só ordena corretamente media queries na mesma unidade (106.25rem = 1700px) */}
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_1.4fr] lg:grid-rows-[minmax(260px,1fr)_minmax(260px,1fr)] min-[106.25rem]:grid-cols-[1fr_1.25fr_1.25fr] min-[106.25rem]:grid-rows-[minmax(360px,1fr)]">
         <Grade
-          className="lg:row-span-2 min-[106.25rem]:row-span-1"
+          className={`lg:row-span-2 min-[106.25rem]:row-span-1 ${abaMovel === 'saida' ? '' : 'max-md:hidden'}`}
           titulo="Saídas"
           grupo="saida"
           corTitulo="bg-red-500"
@@ -348,6 +368,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
           }
         />
         <Grade
+          className={abaMovel === 'cartao' ? '' : 'max-md:hidden'}
           titulo="Recorrentes Cartão"
           grupo="cartao"
           corTitulo="bg-slate-600"
@@ -363,6 +384,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
           {...comuns}
         />
         <Grade
+          className={abaMovel === 'pix' ? '' : 'max-md:hidden'}
           titulo="Recorrentes PIX"
           grupo="pix"
           corTitulo="bg-green-500"

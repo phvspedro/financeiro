@@ -2,6 +2,7 @@ import { ArrowDownCircle, ArrowUpCircle, BarChart3, CalendarClock, ChevronDown, 
 import { useState, type ReactNode } from 'react'
 import { arred, brl, numero, pagoNoMes, restante, terminaEm, tipoDe, type Totais } from '../lib/money'
 import type { Lancamento } from '../lib/types'
+import { useMovel } from '../lib/useMovel'
 
 /** Barra "para onde vai o dinheiro": quanto da entrada vai para cartão, PIX e quanto sobra */
 function Composicao({ t }: { t: Totais }) {
@@ -179,6 +180,9 @@ function Tile({ titulo, valor, ajuda, cor, icone, children, onClick }: { titulo:
 }
 
 export function Resumo({ t, itens, ano, mes, abrirEntradas }: { t: Totais; itens: Lancamento[]; ano: number; mes: number; abrirEntradas: () => void }) {
+  const movel = useMovel()
+  // No celular os totais secundários ficam recolhidos para as tabelas aparecerem logo
+  const [mais, setMais] = useState(false)
   const pctPago = t.saidas > 0 ? Math.round((t.pagas / t.saidas) * 100) : 0
   const [detalhes, setDetalhes] = useState(() => {
     try {
@@ -212,12 +216,24 @@ export function Resumo({ t, itens, ano, mes, abrirEntradas }: { t: Totais; itens
             <div className="h-full rounded-full bg-green-600 transition-all" style={{ width: `${pctPago}%` }} />
           </div>
         </Tile>
+        {movel && (
+          <button
+            onClick={() => setMais(!mais)}
+            className="col-span-2 flex items-center justify-center gap-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-slate-600 ring-1 ring-slate-200 active:bg-slate-50"
+          >
+            {mais ? 'Menos totais' : 'Mais totais (cartão, PIX, sobra, mínimo)'} {mais ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
+        {(!movel || mais) && (
+          <>
         <Tile titulo="Total Cartão" valor={t.cartao} ajuda="Soma do valor previsto dos recorrentes do cartão" />
         <Tile titulo="Total PIX" valor={t.pix} ajuda="Soma do valor real dos recorrentes PIX" />
         <Tile titulo="Cartão + PIX" valor={t.custo} ajuda="Custo total do mês (cartão + PIX)" />
         <Tile titulo="Salário − Custo" valor={t.salarioMenosCusto} ajuda={`Salário fixo (${brl(t.salarioFixo)}) menos (cartão + PIX)`} />
         <Tile titulo="Sobra" valor={t.sobra} ajuda="Sobra (fixo + flex): todas as entradas menos (cartão + PIX)" />
         <Tile titulo="Mínimo" valor={t.minimo} ajuda={`Mínimo possível: só os fixos essenciais. Total fixo ${brl(t.totalFixo)}, dá pra cortar ${brl(t.cortavel)}`} cor="text-amber-600" icone={<Lock size={11} />} />
+          </>
+        )}
         <button
           onClick={alternar}
           className="col-span-2 flex items-center justify-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 sm:col-span-1"

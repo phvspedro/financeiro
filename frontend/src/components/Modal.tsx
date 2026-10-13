@@ -23,9 +23,9 @@ export function Modal({ titulo, subtitulo, fechar, children }: Props) {
   }, [fechar])
 
   return createPortal(
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
-      <div ref={caixa} role="dialog" aria-modal="true" className="w-full max-w-2xl rounded-2xl bg-slate-50 shadow-2xl">
-        <header className="flex items-center justify-between px-5 pb-2 pt-4">
+    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-slate-900/40 md:items-center md:p-4" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
+      <div ref={caixa} role="dialog" aria-modal="true" className="w-full max-w-2xl rounded-t-2xl bg-slate-50 shadow-2xl md:rounded-2xl">
+        <header className="flex items-center justify-between px-4 pb-2 pt-4 md:px-5">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{titulo}</h2>
             {subtitulo && <p className="text-xs text-slate-500">{subtitulo}</p>}
@@ -34,7 +34,7 @@ export function Modal({ titulo, subtitulo, fechar, children }: Props) {
             <X size={18} />
           </button>
         </header>
-        <div className="max-h-[75vh] overflow-y-auto px-5 pb-5">{children}</div>
+        <div className="max-h-[80dvh] overflow-y-auto px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:max-h-[75vh] md:px-5">{children}</div>
       </div>
     </div>,
     document.body,

@@ -69,7 +69,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col lg:h-screen">
       <header className="sticky top-0 z-20 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-4 md:py-2.5">
           <div className="flex items-center gap-2 font-bold text-slate-900">
             <span className="rounded-lg bg-green-600 p-1.5 text-white">
               <BarChart3 size={18} />
@@ -77,7 +77,7 @@ export default function App() {
             <span className="hidden sm:inline">Financeiro</span>
           </div>
 
-          <nav className="flex rounded-lg bg-slate-100 p-0.5 text-sm font-medium">
+          <nav className="ml-auto flex rounded-lg bg-slate-100 p-0.5 text-sm font-medium md:ml-0">
             {(
               [
                 ['mes', 'Mês', <Table2 size={15} key="m" />],
@@ -94,11 +94,11 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="mx-auto flex items-center gap-1">
-            <button onClick={() => mover(-1)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100" title="Anterior">
+          <div className="mx-auto flex min-w-0 items-center gap-1 max-md:order-last max-md:w-full max-md:justify-between">
+            <button onClick={() => mover(-1)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 max-md:p-2.5" title="Anterior" aria-label="Mês anterior">
               <ChevronLeft size={20} />
             </button>
-            <label className="relative min-w-44 cursor-pointer rounded-lg px-3 py-1 text-center text-lg font-bold capitalize text-slate-900 hover:bg-slate-100">
+            <label className="relative min-w-44 cursor-pointer rounded-lg px-3 py-1 text-center text-lg font-bold capitalize max-md:min-w-0 max-md:flex-1 text-slate-900 hover:bg-slate-100">
               {rota.visao === 'mes' ? `${MESES[rota.mes - 1]} / ${rota.ano}` : rota.ano}
               {rota.visao === 'mes' && (
                 <input
@@ -113,7 +113,7 @@ export default function App() {
                 />
               )}
             </label>
-            <button onClick={() => mover(1)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100" title="Próximo">
+            <button onClick={() => mover(1)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 max-md:p-2.5" title="Próximo" aria-label="Próximo mês">
               <ChevronRight size={20} />
             </button>
             {!ehHoje && (
@@ -126,13 +126,13 @@ export default function App() {
             )}
           </div>
 
-          <button onClick={sair} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Sair">
+          <button onClick={sair} aria-label="Sair" className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Sair">
             <LogOut size={16} /> <span className="hidden sm:inline">Sair</span>
           </button>
         </div>
       </header>
 
-      <main className={`w-full flex-1 p-3 lg:min-h-0 lg:overflow-y-auto ${rota.visao === 'ano' ? 'mx-auto max-w-[1800px]' : ''}`}>
+      <main className={`w-full flex-1 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:min-h-0 lg:overflow-y-auto ${rota.visao === 'ano' ? 'mx-auto max-w-[1800px]' : ''}`}>
         {rota.visao === 'mes' ? (
           <Planilha key={`${rota.ano}-${rota.mes}`} ano={rota.ano} mes={rota.mes} avisar={avisar} />
         ) : (

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from 'react-dom'
 import { terminaEm, tipoDe, type TipoItem } from '../lib/money'
 import type { Lancamento } from '../lib/types'
+import { useMovel } from '../lib/useMovel'
 import type { Direcao } from './Celula'
 
 /**
@@ -49,7 +50,6 @@ export function TipoCelula({ r, item, ano, mes, modo, rotuloFixos, onAbrir, onNa
   const tipo = tipoDe(item)
   const celula = useRef<HTMLDivElement>(null)
   const categoria = categorias(rotuloFixos)[tipo]
-  const parcela = parcelaDe(item)
 
   function teclas(e: KeyboardEvent<HTMLDivElement>) {
     const mapa: Record<string, Direcao> = { ArrowUp: 'cima', ArrowDown: 'baixo', ArrowLeft: 'esquerda', ArrowRight: 'direita' }
@@ -76,6 +76,19 @@ export function TipoCelula({ r, item, ano, mes, modo, rotuloFixos, onAbrir, onNa
       className="cell flex h-8 cursor-pointer items-center justify-center px-1"
       title={modo === 'categoria' ? `${categoria.nome}: ${categoria.ajuda}. Clique para alterar.` : descricao(item, ano, mes)}
     >
+      <BadgeTipo item={item} modo={modo} rotuloFixos={rotuloFixos} />
+    </div>
+  )
+}
+
+/** Selo do tipo/categoria do item (Fixo 3/10, Parcela, Assinatura, Gasto do mês...) */
+export function BadgeTipo({ item, modo, rotuloFixos }: { item: Lancamento; modo: ModoTipo; rotuloFixos: string }) {
+  const tipo = tipoDe(item)
+  const categoria = categorias(rotuloFixos)[tipo]
+  const parcela = parcelaDe(item)
+
+  return (
+    <>
       {modo === 'categoria' ? (
         <span className={`flex items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-semibold ${categoria.classe}`}>
           {categoria.nome}
@@ -104,7 +117,7 @@ export function TipoCelula({ r, item, ano, mes, modo, rotuloFixos, onAbrir, onNa
           {tipo === 'avulso' && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">Avulso</span>}
         </>
       )}
-    </div>
+    </>
   )
 }
 
@@ -159,6 +172,7 @@ type Escolha = 'fixo' | 'parcelado' | 'avulso'
 
 /** Menu para escolher o tipo/categoria do item e as parcelas */
 export function TipoMenu({ ancora, item, ano, mes, modo, rotuloFixos, fechar, salvar, propagar }: MenuProps) {
+  const movel = useMovel()
   const cat = categorias(rotuloFixos)
   const opcoes: { tipo: Escolha; nome: string; ajuda: string }[] =
     modo === 'categoria'
@@ -232,14 +246,19 @@ export function TipoMenu({ ancora, item, ano, mes, modo, rotuloFixos, fechar, sa
     }
   }
 
-  const campo = 'num w-14 rounded-md border border-slate-300 px-2 py-1 text-center text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-600/20'
+  const campo = 'num w-14 rounded-md border border-slate-300 px-2 py-1 text-center text-base md:text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-600/20'
 
-  return createPortal(
+  // No celular vira uma folha na parte de baixo da tela, com fundo escurecido
+  const conteudo = (
     <div
       ref={caixa}
       onKeyDown={teclas}
-      style={{ top: pos.top, left: pos.left }}
-      className="fixed z-50 w-[272px] rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-xl"
+      style={movel ? undefined : { top: pos.top, left: pos.left }}
+      className={
+        movel
+          ? 'absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-base shadow-xl'
+          : 'fixed z-50 w-[272px] rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-xl'
+      }
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="truncate font-semibold text-slate-800">{item.nome}</span>
@@ -324,7 +343,8 @@ export function TipoMenu({ ancora, item, ano, mes, modo, rotuloFixos, fechar, sa
           Salvar
         </button>
       </div>
-    </div>,
-    document.body,
+    </div>
   )
+
+  return createPortal(movel ? <div className="fixed inset-0 z-50 bg-slate-900/40">{conteudo}</div> : conteudo, document.body)
 }

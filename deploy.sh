@@ -33,6 +33,11 @@ die()  { printf '\033[1;31mERRO:\033[0m %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "execute como root (sudo bash deploy.sh)"
 
 # ---------------------------------------------------------------- dependências
+# Aceita mudança de "Label"/metadados de repositórios de terceiros (ex.: PPA ondrej/php),
+# que faz o `apt-get update` falhar e derrubaria a instalação do Docker.
+log "Atualizando índices do apt..."
+apt-get update -qq --allow-releaseinfo-change || warn "apt-get update teve avisos/erros; seguindo mesmo assim"
+
 install_docker() {
   command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && return
   log "Instalando Docker..."
@@ -40,8 +45,8 @@ install_docker() {
   systemctl enable --now docker
 }
 
-command -v git  >/dev/null 2>&1 || { log "Instalando git..."; apt-get update -qq && apt-get install -y -qq git; }
-command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq curl; }
+command -v git  >/dev/null 2>&1 || { log "Instalando git..."; apt-get install -y -qq git; }
+command -v curl >/dev/null 2>&1 || { apt-get install -y -qq curl; }
 install_docker
 
 # ---------------------------------------------------------------------- código
@@ -111,7 +116,7 @@ docker image prune -f >/dev/null 2>&1 || true
 
 # ------------------------------------------------------------ proxy do domínio
 if [ -n "$DOMAIN" ]; then
-  command -v nginx >/dev/null 2>&1 || { log "Instalando nginx..."; apt-get update -qq && apt-get install -y -qq nginx; }
+  command -v nginx >/dev/null 2>&1 || { log "Instalando nginx..."; apt-get install -y -qq nginx; }
   conf="/etc/nginx/sites-available/financeiro"
   log "Configurando Nginx para $DOMAIN -> 127.0.0.1:${APP_PORT}"
   cat > "$conf" <<EOF
@@ -143,7 +148,7 @@ log "Deploy concluído."
 if [ -n "$DOMAIN" ]; then
   echo "    URL: http$([ "$SSL" = "1" ] && echo s)://${DOMAIN}"
 else
-  echo "    URL: http://<ip-do-servidor>:${APP_PORT}"
+  echo "    Sem domínio, o app só escuta em 127.0.0.1:${APP_PORT} (use túnel SSH: ssh -L ${APP_PORT}:127.0.0.1:${APP_PORT} usuario@servidor)"
 fi
 echo "    Login inicial: admin@admin.com / admin101 (troque a senha após entrar)"
 echo "    Logs:   docker compose -f $APP_DIR/docker-compose.yml logs -f"
