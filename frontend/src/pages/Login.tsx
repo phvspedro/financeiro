@@ -5,6 +5,7 @@ import { api, auth } from '../lib/api'
 export function Login({ entrou }: { entrou: () => void }) {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
+  const [lembrar, setLembrar] = useState(true)
   const [erro, setErro] = useState('')
   const [enviando, setEnviando] = useState(false)
 
@@ -13,8 +14,8 @@ export function Login({ entrou }: { entrou: () => void }) {
     setErro('')
     setEnviando(true)
     try {
-      const { data } = await api.post('/login', { email, password: senha })
-      auth.salvar(data.token)
+      const { data } = await api.post('/login', { email, password: senha, remember: lembrar })
+      auth.salvar(data.token, lembrar)
       entrou()
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { message?: string } } }).response
@@ -44,10 +45,15 @@ export function Login({ entrou }: { entrou: () => void }) {
         </div>
 
         <label className="mb-1 block text-xs font-semibold text-slate-600">Senha</label>
-        <div className="relative mb-5">
+        <div className="relative mb-4">
           <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input type="password" required autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} className={campo} placeholder="••••••••" />
         </div>
+
+        <label className="mb-5 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} className="h-4 w-4 accent-green-600" />
+          Lembrar-me neste dispositivo
+        </label>
 
         {erro && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}
 
@@ -55,7 +61,7 @@ export function Login({ entrou }: { entrou: () => void }) {
           {enviando && <Loader2 size={16} className="animate-spin" />}
           Entrar
         </button>
-        <p className="mt-4 text-center text-xs text-slate-400">Você continuará conectado neste navegador até clicar em Sair.</p>
+        <p className="mt-4 text-center text-xs text-slate-400">Com "Lembrar-me" você continua conectado neste navegador até clicar em Sair.</p>
       </form>
     </div>
   )

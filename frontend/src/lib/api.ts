@@ -2,10 +2,18 @@ import axios from 'axios'
 
 const CHAVE = 'financeiro.token'
 
+// "Lembrar-me" guarda o token em localStorage (permanente); sem ele, em sessionStorage
+// (some ao fechar o navegador).
 export const auth = {
-  token: () => localStorage.getItem(CHAVE),
-  salvar: (t: string) => localStorage.setItem(CHAVE, t),
-  limpar: () => localStorage.removeItem(CHAVE),
+  token: () => localStorage.getItem(CHAVE) ?? sessionStorage.getItem(CHAVE),
+  salvar: (t: string, lembrar: boolean) => {
+    auth.limpar()
+    ;(lembrar ? localStorage : sessionStorage).setItem(CHAVE, t)
+  },
+  limpar: () => {
+    localStorage.removeItem(CHAVE)
+    sessionStorage.removeItem(CHAVE)
+  },
 }
 
 export const api = axios.create({

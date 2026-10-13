@@ -15,6 +15,7 @@ class AuthController extends Controller
         $dados = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
         $user = User::where('email', $dados['email'])->first();
@@ -23,8 +24,10 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => 'E-mail ou senha inválidos.']);
         }
 
-        // Token sem expiração (sanctum.expiration = null): o login fica permanente
-        $token = $user->createToken('web')->plainTextToken;
+        // Lembrar-me: token permanente (só some com `php artisan auth:revogar`).
+        // Sem lembrar: token que vale 12h e o navegador o descarta ao fechar.
+        $lembrar = (bool) ($dados['remember'] ?? false);
+        $token = $user->createToken('web', ['*'], $lembrar ? null : now()->addHours(12))->plainTextToken;
 
         return ['token' => $token, 'user' => $user];
     }
