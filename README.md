@@ -77,6 +77,24 @@ Coluna **Venc.** na tabela de Saídas. Digite só o dia (`10`, no mês que está
 - Ao abrir um mês novo ou replicar, o vencimento vem junto no mesmo dia do mês (dia 31 num mês de 30 dias vira 30).
 - Mudanças de data entram no histórico e podem ser desfeitas.
 
+### Ordenar, filtrar e mover itens
+
+- **Ordenar:** clique no cabeçalho da coluna (crescente → decrescente → ordem manual). No celular, use o seletor "Ordenar por" acima da lista. A ordenação é só de visualização (não muda a ordem salva) e, enquanto ela estiver ativa, arrastar/subir/descer fica desligado.
+- **Filtrar:** campo "Filtrar por nome" e atalhos **Pendentes** (não pago / sem Real) e **Vencidas**. Os totais continuam somando a tabela inteira.
+- A ordenação e os filtros de cada tabela ficam lembrados no navegador.
+- **Mover Cartão ↔ PIX:** ícone de setas na linha (ou "Mover para PIX/Cartão" na folha do celular). O item vai para o fim da outra tabela e a mudança entra no histórico (dá para desfazer). Fixos e parcelados perguntam se também mudam nos meses seguintes, sem duplicar.
+
+### Comparativo com o mês anterior
+
+Uma linha logo abaixo dos totais mostra o que mudou nas **Saídas** (%, R$ e as principais causas). Em **Detalhes** aparece o comparativo completo de Saídas, Cartão, PIX e Entradas. A comparação usa o valor lançado de cada item e marca o que é novo ou saiu.
+
+### Aparência, celular e lembretes
+
+- Botão de paleta no topo: **tema** (automático, claro, escuro), **tamanho da letra** e **densidade** das linhas das tabelas. Fica salvo no navegador.
+- **Celular:** deslize um item para a direita para marcar como pago/recebido (ou Real = previsto) e para a esquerda para excluir; o botão **+** flutuante lança um item rápido.
+- **Aba Anual:** clique em qualquer mês (barras, pontos da linha, colunas ou cartões) para abri-lo; o mês mais caro (▲) e o mais barato (▼) ficam marcados, e há um gráfico de linhas de Entradas × Saídas × Sobra.
+- **Lembretes de vencimento:** ligue no menu de paleta. O app avisa (notificação do navegador/PWA) das Saídas não pagas que vencem hoje ou amanhã, uma vez por dia por item. A conferência acontece quando o app está aberto ou volta a ficar visível; não há envio com o app fechado (isso exigiria um servidor de push).
+
 ### Avisos e confirmações
 
 Perguntas antes de ações que apagam ou desfazem em vários meses (excluir linha, "Voltar até aqui", desfazer uma replicação) e os avisos de sucesso/erro usam **SweetAlert2**. Esc fecha só a pergunta.

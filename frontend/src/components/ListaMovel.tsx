@@ -1,5 +1,5 @@
-import { Check, ChevronDown, ChevronUp, Lock, LockOpen, Plus, Repeat, Trash2, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ArrowRightLeft, Check, ChevronDown, ChevronUp, Lock, LockOpen, Plus, Repeat, Trash2, X } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { alertaAberto } from '../lib/alerta'
 import { arred, brl, chaveItem, lerValor, lerVencimento, numero, textoVencimento } from '../lib/money'
@@ -28,6 +28,12 @@ interface Props {
   totalReal: number
   /** Abre o menu de tipo/parcelas (folha) para o item */
   abrirTipo: (item: Lancamento, ancora: HTMLElement) => void
+  /** Há ordenação ativa: subir/descer fica desligado (a ordem salva não muda) */
+  ordenado?: boolean
+  /** Há filtro ativo: a lista pode estar mostrando só parte dos itens */
+  filtrando?: boolean
+  /** Mostra o botão flutuante "+" para lançar rápido */
+  fab?: boolean
 }
 
 /**
@@ -36,7 +42,7 @@ interface Props {
  */
 export function ListaMovel({
   itens, grupo, acoes, ano, mes, anterior, hoje, check, orcamento, parcelas, vencimento, essencial, categoriaFixos, rotuloFixo, novoItem,
-  totalValor, totalReal, abrirTipo,
+  totalValor, totalReal, abrirTipo, ordenado, filtrando, fab,
 }: Props) {
   const [editando, setEditando] = useState<number | null>(null)
   const [novo, setNovo] = useState(false)
@@ -44,8 +50,12 @@ export function ListaMovel({
   const item = itens.find((i) => i.id === editando)
 
   return (
-    <div className="text-sm">
-      {itens.length === 0 && <p className="px-4 py-8 text-center text-slate-400">Nenhum item. Toque em “Adicionar” para começar.</p>}
+    <div className={`text-sm ${fab ? 'pb-20' : ''}`}>
+      {itens.length === 0 && (
+        <p className="px-4 py-8 text-center text-slate-400">
+          {filtrando ? 'Nenhum item com esses filtros.' : 'Nenhum item. Toque em “Adicionar” para começar.'}
+        </p>
+      )}
 
       <ul>
         {itens.map((i) => {
@@ -53,7 +63,18 @@ export function ListaMovel({
           const dif = arred(i.valor - (i.real ?? 0))
           const marcado = check && i.pago
           return (
-            <li key={i.id} className={`flex items-stretch border-b border-slate-100 ${marcado ? 'bg-green-50/70' : ''}`}>
+            <li key={i.id} className="border-b border-slate-100">
+              <Deslizar
+                aoDireita={
+                  check
+                    ? { rotulo: i.pago ? 'Desmarcar' : check === 'pago' ? 'Pago' : 'Recebido', acao: () => acoes.atualizar(i.id, { pago: !i.pago }) }
+                    : orcamento && pendente
+                      ? { rotulo: 'Real = previsto', acao: () => acoes.atualizar(i.id, { real: i.valor }) }
+                      : undefined
+                }
+                aoEsquerda={{ rotulo: 'Excluir', acao: () => acoes.remover(i.id) }}
+                className={`flex items-stretch ${marcado ? 'bg-green-50/70' : 'bg-white'}`}
+              >
               {check && (
                 <label className="flex w-12 shrink-0 cursor-pointer items-center justify-center" title={check === 'pago' ? 'Marcar como pago' : 'Marcar como recebido'}>
                   <input
@@ -112,6 +133,7 @@ export function ListaMovel({
                   <Check size={18} />
                 </button>
               )}
+              </Deslizar>
             </li>
           )
         })}
@@ -120,6 +142,16 @@ export function ListaMovel({
       <button onClick={() => setNovo(true)} className="flex w-full items-center justify-center gap-2 border-b border-slate-100 py-3.5 font-medium text-green-700 active:bg-green-50">
         <Plus size={18} /> Adicionar
       </button>
+
+      {fab && (
+        <button
+          onClick={() => setNovo(true)}
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-white shadow-lg shadow-black/25 active:scale-95 active:bg-green-700"
+          aria-label="Adicionar item"
+        >
+          <Plus size={28} />
+        </button>
+      )}
 
       <div className="num flex items-center justify-between bg-slate-50 px-4 py-2.5 font-semibold">
         <span className="text-slate-600">Total</span>
@@ -145,6 +177,8 @@ export function ListaMovel({
           item={item}
           posicao={itens.indexOf(item)}
           total={itens.length}
+          ordenado={ordenado}
+          moverGrupo={grupo === 'cartao' || grupo === 'pix' ? () => { setEditando(null); acoes.mover(item, grupo === 'cartao' ? 'pix' : 'cartao') } : undefined}
           {...{ ano, mes, check, orcamento, parcelas, vencimento, essencial, categoriaFixos, rotuloFixo }}
           fechar={() => setEditando(null)}
           salvar={(dados) => acoes.atualizar(item.id, dados)}
@@ -176,6 +210,72 @@ export function ListaMovel({
   )
 }
 
+interface AcaoDeslize {
+  rotulo: string
+  acao: () => void
+}
+
+/**
+ * Item que acompanha o dedo: deslizar para a direita marca (pago / real = previsto),
+ * para a esquerda exclui. A ação só dispara depois de passar do limite ao soltar.
+ */
+function Deslizar({ children, aoDireita, aoEsquerda, className = '' }: { children: ReactNode; aoDireita?: AcaoDeslize; aoEsquerda?: AcaoDeslize; className?: string }) {
+  const LIMITE = 88
+  const [dx, setDx] = useState(0)
+  const [solto, setSolto] = useState(true)
+  const inicio = useRef<{ x: number; y: number } | null>(null)
+  const horizontal = useRef<boolean | null>(null)
+
+  const limitar = (v: number) => Math.max(aoEsquerda ? -140 : 0, Math.min(aoDireita ? 140 : 0, v))
+
+  return (
+    <div className="relative overflow-hidden">
+      <div className="absolute inset-0 flex items-center justify-between text-sm font-semibold text-white" aria-hidden>
+        <span className={`flex h-full items-center gap-1.5 overflow-hidden whitespace-nowrap bg-green-600 pl-4 ${dx > 0 ? '' : 'invisible'}`} style={{ width: Math.max(dx, 0) }}>
+          <Check size={18} /> {dx >= LIMITE ? aoDireita?.rotulo : ''}
+        </span>
+        <span className={`flex h-full items-center justify-end gap-1.5 overflow-hidden whitespace-nowrap bg-red-600 pr-4 ${dx < 0 ? '' : 'invisible'}`} style={{ width: Math.max(-dx, 0) }}>
+          {dx <= -LIMITE ? aoEsquerda?.rotulo : ''} <Trash2 size={18} />
+        </span>
+      </div>
+      <div
+        className={className}
+        style={{ transform: `translateX(${dx}px)`, transition: solto ? 'transform 0.2s ease' : 'none', touchAction: 'pan-y' }}
+        onTouchStart={(e) => {
+          inicio.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+          horizontal.current = null
+        }}
+        onTouchMove={(e) => {
+          if (!inicio.current) return
+          const mx = e.touches[0].clientX - inicio.current.x
+          const my = e.touches[0].clientY - inicio.current.y
+          if (horizontal.current === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) horizontal.current = Math.abs(mx) > Math.abs(my) * 1.5
+          if (!horizontal.current) return
+          setSolto(false)
+          setDx(limitar(mx))
+        }}
+        onTouchEnd={() => {
+          const final = dx
+          inicio.current = null
+          setSolto(true)
+          setDx(0)
+          if (horizontal.current && final >= LIMITE) aoDireita?.acao()
+          else if (horizontal.current && final <= -LIMITE) aoEsquerda?.acao()
+          horizontal.current = null
+        }}
+        onTouchCancel={() => {
+          inicio.current = null
+          horizontal.current = null
+          setSolto(true)
+          setDx(0)
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 /** Folha que sobe da parte de baixo da tela */
 function Folha({ titulo, fechar, children }: { titulo: ReactNode; fechar: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -185,7 +285,7 @@ function Folha({ titulo, fechar, children }: { titulo: ReactNode; fechar: () => 
   }, [fechar])
 
   return createPortal(
-    <div className="fixed inset-0 z-[45] flex items-end bg-slate-900/40" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
+    <div className="fixed inset-0 z-[45] flex items-end bg-black/40" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
       <div role="dialog" aria-modal="true" className="max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl">
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
           <h3 className="truncate text-base font-bold text-slate-900">{titulo}</h3>
@@ -229,6 +329,9 @@ interface FolhaItemProps {
   item: Lancamento
   posicao: number
   total: number
+  ordenado?: boolean
+  /** Presente nos itens de Cartão/PIX: passa o item para o outro grupo */
+  moverGrupo?: () => void
   ano: number
   mes: number
   check?: 'pago' | 'recebido'
@@ -245,7 +348,7 @@ interface FolhaItemProps {
   abrirTipo: (ancora: HTMLElement) => void
 }
 
-function FolhaItem({ item, posicao, total, ano, mes, check, orcamento, parcelas, vencimento, essencial, categoriaFixos, rotuloFixo, fechar, salvar, remover, mover, abrirTipo }: FolhaItemProps) {
+function FolhaItem({ item, posicao, total, ordenado, moverGrupo, ano, mes, check, orcamento, parcelas, vencimento, essencial, categoriaFixos, rotuloFixo, fechar, salvar, remover, mover, abrirTipo }: FolhaItemProps) {
   const [nome, setNome] = useState(item.nome)
   const [valor, setValor] = useState(numero(item.valor))
   const [real, setReal] = useState(item.real == null ? '' : numero(item.real))
@@ -346,11 +449,19 @@ function FolhaItem({ item, posicao, total, ano, mes, check, orcamento, parcelas,
           </button>
         )}
 
+        {moverGrupo && (
+          <button onClick={moverGrupo} className={chave(false)}>
+            <span className="flex items-center gap-2">
+              <ArrowRightLeft size={18} /> Mover para {item.grupo === 'cartao' ? 'PIX' : 'Cartão'}
+            </span>
+          </button>
+        )}
+
         <div className="flex gap-2">
-          <button onClick={() => mover(-1)} disabled={posicao === 0} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2.5 text-sm text-slate-600 disabled:opacity-40">
+          <button onClick={() => mover(-1)} disabled={ordenado || posicao === 0} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2.5 text-sm text-slate-600 disabled:opacity-40">
             <ChevronUp size={16} /> Subir
           </button>
-          <button onClick={() => mover(1)} disabled={posicao === total - 1} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2.5 text-sm text-slate-600 disabled:opacity-40">
+          <button onClick={() => mover(1)} disabled={ordenado || posicao === total - 1} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-2.5 text-sm text-slate-600 disabled:opacity-40">
             <ChevronDown size={16} /> Descer
           </button>
           <button onClick={remover} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-200 py-2.5 text-sm font-medium text-red-600 active:bg-red-50">

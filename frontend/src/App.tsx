@@ -1,7 +1,9 @@
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, LogOut, Table2 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { AparenciaMenu } from './components/AparenciaMenu'
 import { api, auth } from './lib/api'
 import { toast } from './lib/alerta'
+import { useVerificarVencimentos } from './lib/lembretes'
 import { MESES } from './lib/money'
 import { Login } from './pages/Login'
 import { Planilha } from './pages/Planilha'
@@ -44,6 +46,8 @@ export default function App() {
       window.removeEventListener('hashchange', hash)
     }
   }, [])
+
+  useVerificarVencimentos(logado)
 
   const avisar = useCallback((texto: string, tipo: 'ok' | 'erro' = 'ok') => toast(texto, tipo), [])
 
@@ -125,6 +129,8 @@ export default function App() {
               </button>
             )}
           </div>
+
+          <AparenciaMenu />
 
           <button onClick={sair} aria-label="Sair" className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Sair">
             <LogOut size={16} /> <span className="hidden sm:inline">Sair</span>

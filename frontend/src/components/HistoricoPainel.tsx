@@ -83,6 +83,10 @@ function Texto({ h }: { h: Historico }) {
       return <>{nome}: {h.depois === '1' ? 'passou a repetir todo mês com valor variável' : 'deixou de ser variável'}{onde}</>
     case 'essencial':
       return <>{nome} marcado como {h.depois === '1' ? 'essencial (não dá pra cortar)' : 'cortável'}</>
+    case 'grupo': {
+      const rotulo = (g: string | null) => (g === 'pix' ? 'PIX' : g === 'cartao' ? 'Cartão' : g)
+      return <>Moveu {nome} {de(rotulo(h.antes), rotulo(h.depois))}</>
+    }
     case 'parcela':
       return <>{nome}: parcela {de(h.antes ?? 'sem', h.depois ?? 'sem')}{onde}</>
     default:
@@ -216,7 +220,7 @@ export function HistoricoPainel({ ano, mes, fechar, aoMudar }: Props) {
   const botao = 'flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50'
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
       <aside className="flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>

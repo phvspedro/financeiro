@@ -1,6 +1,7 @@
-import { Check, CheckCheck, GripVertical, Lock, LockOpen, Plus, Repeat, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowRightLeft, ArrowUp, Check, CheckCheck, GripVertical, Lock, LockOpen, Plus, Repeat, Search, Trash2, X } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { arred, brl, chaveItem, hojeISO, lerValor, lerVencimento, numero, statusVencimento, textoVencimento } from '../lib/money'
+import { usePersistido } from '../lib/preferencias'
 import { useMovel } from '../lib/useMovel'
 import type { Grupo, Lancamento, ValoresAnteriores } from '../lib/types'
 import { Celula, type Direcao } from './Celula'
@@ -19,6 +20,8 @@ export interface AcoesGrade {
   criar: (grupo: Grupo, dados: Partial<Lancamento>) => Promise<Lancamento | undefined>
   remover: (id: number) => void
   reordenar: (grupo: Grupo, ids: number[]) => void
+  /** Passa um item de Cartão para PIX (ou o contrário) */
+  mover: (item: Lancamento, destino: Grupo) => void
 }
 
 interface Props {
@@ -60,6 +63,35 @@ interface Props {
 
 const vazio = <span className="text-slate-300">–</span>
 
+type ColunaOrdem = 'pago' | 'nome' | 'valor' | 'venc' | 'real' | 'dif' | 'tipo'
+type EstadoFiltro = 'todos' | 'pendentes' | 'vencidas'
+
+/** O que cada tabela lembra entre uma visita e outra (por grupo) */
+interface Visao {
+  ordem: { col: ColunaOrdem; dir: 1 | -1 } | null
+  texto: string
+  estado: EstadoFiltro
+}
+
+const VISAO_PADRAO: Visao = { ordem: null, texto: '', estado: 'todos' }
+
+/** Minúsculas e sem acento, para a busca por nome */
+const simples = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+const GRUPO_NOME: Partial<Record<Grupo, string>> = { cartao: 'Cartão', pix: 'PIX' }
+
+/** Chave de ordenação de cada coluna. null vai sempre para o fim (sem vencimento, sem real). */
+const chaveOrdem: Record<ColunaOrdem, (i: Lancamento) => string | number | null> = {
+  pago: (i) => (i.pago ? 1 : 0),
+  nome: (i) => i.nome,
+  valor: (i) => i.valor,
+  venc: (i) => i.vencimento,
+  real: (i) => i.real,
+  dif: (i) => (i.real == null ? null : arred(i.valor - i.real)),
+  // fixo, parcelado, avulso (o gasto variável conta como fixo)
+  tipo: (i) => (i.parcela_total ? 1 : i.recorrente ? 0 : 2),
+}
+
 export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check, parcelas, essencial, vencimento, ano, mes, anterior, className = '', abas, nomeAba, novoItem, categoriaFixos, rotuloFixo = 'Fixo: repete todo mês', rodape }: Props) {
   const movel = useMovel()
   const tabela = useRef<HTMLDivElement>(null)
@@ -69,10 +101,29 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
   const [arrastando, setArrastando] = useState<number | null>(null)
   const [alvo, setAlvo] = useState<number | null>(null)
   const [pegador, setPegador] = useState<number | null>(null)
+  // Ordenação e filtros só de visualização: não mexem na ordem salva (arrastar fica desligado enquanto ordena)
+  const [visao, setVisao] = usePersistido<Visao>(`financeiro.tabela.${grupo}`, VISAO_PADRAO)
+  const { ordem, texto: busca, estado } = visao
+  const filtrando = busca.trim() !== '' || estado !== 'todos'
 
   const colunas = ['nome', 'valor', ...(vencimento ? ['venc'] : []), ...(orcamento ? ['real'] : []), ...(parcelas ? ['tipo'] : [])]
-  const linhaNova = itens.length
+  const hoje = hojeISO()
+  const termo = simples(busca.trim())
+  const pendente = (i: Lancamento) => (check ? !i.pago : orcamento ? i.real == null : false)
+  const filtrados = !filtrando
+    ? itens
+    : itens.filter(
+        (i) =>
+          (!termo || simples(i.nome).includes(termo)) &&
+          (estado === 'todos' || (estado === 'pendentes' ? pendente(i) : statusVencimento(i, hoje)?.status === 'atrasado')),
+      )
+  const lista = ordem ? ordenar(filtrados, ordem.col, ordem.dir) : filtrados
+  const linhaNova = lista.length
   const temAnterior = Object.keys(anterior).length > 0
+
+  function alternarOrdem(col: ColunaOrdem) {
+    setVisao((v) => ({ ...v, ordem: v.ordem?.col !== col ? { col, dir: 1 } : v.ordem.dir === 1 ? { col, dir: -1 } : null }))
+  }
 
   function focar(r: number, c: string) {
     const el =
@@ -99,7 +150,8 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
     if (!nome.trim()) return
     const novo = await acoes.criar(grupo, { ...novoItem, nome: nome.trim() })
     // Depois de criar, já posiciona no valor da nova linha
-    if (novo) requestAnimationFrame(() => focar(linhaNova, 'valor'))
+    // (ordenada ou filtrada a nova linha pode cair em outro lugar: aí não força o foco)
+    if (novo && !ordem && !filtrando) requestAnimationFrame(() => focar(linhaNova, 'valor'))
   }
 
   function soltar(destinoId: number) {
@@ -107,12 +159,11 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
     setArrastando(null)
     setAlvo(null)
     if (origem == null || origem === destinoId) return
-    const ids = itens.map((i) => i.id).filter((id) => id !== origem)
-    ids.splice(ids.indexOf(destinoId) + (itens.findIndex((i) => i.id === origem) < itens.findIndex((i) => i.id === destinoId) ? 1 : 0), 0, origem)
+    const ids = lista.map((i) => i.id).filter((id) => id !== origem)
+    ids.splice(ids.indexOf(destinoId) + (lista.findIndex((i) => i.id === origem) < lista.findIndex((i) => i.id === destinoId) ? 1 : 0), 0, origem)
     acoes.reordenar(grupo, ids)
   }
 
-  const hoje = hojeISO()
   const atrasadas = vencimento ? itens.filter((i) => statusVencimento(i, hoje)?.status === 'atrasado').length : 0
   const totalValor = arred(itens.reduce((s, i) => s + i.valor, 0))
   const totalReal = arred(itens.reduce((s, i) => s + (i.real ?? 0), 0))
@@ -126,12 +177,26 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
     vencimento ? '62px' : '',
     orcamento ? '88px 84px' : '',
     parcelas ? (categoriaFixos ? '112px' : '74px') : '',
-    essencial ? (categoriaFixos ? '122px' : '70px') : '48px',
+    essencial ? (categoriaFixos ? '148px' : '70px') : '48px',
   ]
     .filter(Boolean)
     .join(' ')
 
-  const th = 'flex h-8 items-center whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide text-white'
+  const th = 'flex h-linha items-center whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-wide text-white'
+
+  /** Cabeçalho clicável: asc → desc → ordem manual */
+  const cabecalho = (col: ColunaOrdem, conteudo: ReactNode, extra = '', titulo?: string) => (
+    <button
+      type="button"
+      onClick={() => alternarOrdem(col)}
+      className={`${th} gap-1 hover:bg-white/10 ${extra}`}
+      title={titulo ? `${titulo} · clique para ordenar` : 'Clique para ordenar'}
+      aria-sort={ordem?.col === col ? (ordem.dir === 1 ? 'ascending' : 'descending') : undefined}
+    >
+      {conteudo}
+      {ordem?.col === col && (ordem.dir === 1 ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+    </button>
+  )
 
   return (
     <section className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-full lg:min-h-0 ${className}`}>
@@ -164,9 +229,29 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
 
       {abas}
 
+      <Barra
+        visao={visao}
+        setVisao={setVisao}
+        movel={movel}
+        total={itens.length}
+        mostrando={lista.length}
+        filtros={[...(check || orcamento ? ([['pendentes', 'Pendentes']] as const) : []), ...(vencimento ? ([['vencidas', 'Vencidas']] as const) : [])]}
+        colunas={[
+          ...(check ? ([['pago', check === 'pago' ? 'Pago' : 'Recebido']] as const) : []),
+          ['nome', 'Nome'],
+          ['valor', 'Valor'],
+          ...(vencimento ? ([['venc', 'Vencimento']] as const) : []),
+          ...(orcamento ? ([['real', 'Real'], ['dif', 'Diferença']] as const) : []),
+          ...(parcelas ? ([['tipo', 'Tipo']] as const) : []),
+        ]}
+      />
+
       {movel ? (
         <ListaMovel
-          itens={itens}
+          itens={lista}
+          ordenado={!!ordem}
+          filtrando={filtrando}
+          fab={grupo !== 'entrada'}
           grupo={grupo}
           acoes={acoes}
           ano={ano}
@@ -191,34 +276,28 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
           {/* Cabeçalho das colunas (fica fixo ao rolar) */}
           <div className="sticky top-0 z-10 grid bg-blue-700" style={{ gridTemplateColumns: template }}>
             <div />
-            {check && <div className={`${th} justify-center px-0`} title={check === 'pago' ? 'Pago' : 'Recebido'}>
-              <Check size={14} />
-            </div>}
-            <div className={th}>Nome</div>
-            <div className={`${th} justify-end`}>{orcamento ? 'Valor R$' : grupo === 'entrada' ? 'Entrada R$' : 'Saída R$'}</div>
-            {vencimento && (
-              <div className={`${th} justify-center`} title="Data de vencimento">
-                Venc.
-              </div>
-            )}
+            {check && cabecalho('pago', <Check size={14} />, 'justify-center px-0', check === 'pago' ? 'Pago' : 'Recebido')}
+            {cabecalho('nome', 'Nome')}
+            {cabecalho('valor', orcamento ? 'Valor R$' : grupo === 'entrada' ? 'Entrada R$' : 'Saída R$', 'justify-end')}
+            {vencimento && cabecalho('venc', 'Venc.', 'justify-center', 'Data de vencimento')}
             {orcamento && (
               <>
-                <div className={`${th} justify-end bg-red-500`}>Real</div>
-                <div className={`${th} justify-end bg-red-500`}>Diferença</div>
+                {cabecalho('real', 'Real', 'justify-end bg-red-500 hover:bg-red-400')}
+                {cabecalho('dif', 'Diferença', 'justify-end bg-red-500 hover:bg-red-400')}
               </>
             )}
-            {parcelas && <div className={`${th} justify-center`} title="Fixo, parcelado (com prazo) ou avulso">Tipo</div>}
+            {parcelas && cabecalho('tipo', 'Tipo', 'justify-center', 'Fixo, parcelado (com prazo) ou avulso')}
             <div />
           </div>
 
-          {itens.map((item, r) => {
+          {lista.map((item, r) => {
             const dif = arred(item.valor - (item.real ?? 0))
             const pendente = orcamento && item.real == null
             const marcado = check && item.pago
             return (
               <div
                 key={item.id}
-                draggable={pegador === item.id}
+                draggable={!ordem && pegador === item.id}
                 onDragStart={(e) => {
                   setArrastando(item.id)
                   e.dataTransfer.effectAllowed = 'move'
@@ -240,10 +319,10 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
                 style={{ gridTemplateColumns: template }}
               >
                 <div
-                  onMouseDown={() => setPegador(item.id)}
+                  onMouseDown={() => !ordem && setPegador(item.id)}
                   onMouseUp={() => setPegador(null)}
-                  className="flex cursor-grab items-center justify-center text-slate-300 opacity-0 group-hover:opacity-100"
-                  title="Arraste para reordenar"
+                  className={`flex items-center justify-center text-slate-300 opacity-0 group-hover:opacity-100 ${ordem ? 'cursor-not-allowed' : 'cursor-grab'}`}
+                  title={ordem ? 'Volte à ordem manual (clique no cabeçalho) para reordenar' : 'Arraste para reordenar'}
                 >
                   <GripVertical size={13} />
                 </div>
@@ -347,7 +426,7 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
                       )}
                     </Celula>
                     <div
-                      className={`num flex h-8 items-center justify-end px-2 ${
+                      className={`num flex h-linha items-center justify-end px-2 ${
                         dif < 0 ? 'font-semibold text-red-600' : dif > 0 ? 'text-green-700' : 'text-slate-400'
                       }`}
                       title={dif < 0 ? 'Gastou mais que o previsto' : dif > 0 ? 'Gastou menos que o previsto' : undefined}
@@ -371,6 +450,16 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
                       title={item.essencial ? 'Essencial: não dá pra cortar (entra no mínimo possível). Clique para marcar como cortável' : 'Cortável. Clique para marcar como essencial (não dá pra cortar)'}
                     >
                       {item.essencial ? <Lock size={14} /> : <LockOpen size={14} />}
+                    </button>
+                  )}
+                  {GRUPO_NOME[grupo] && (
+                    <button
+                      tabIndex={-1}
+                      onClick={() => acoes.mover(item, grupo === 'cartao' ? 'pix' : 'cartao')}
+                      className="rounded p-1 text-slate-300 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100"
+                      title={`Mover para ${GRUPO_NOME[grupo === 'cartao' ? 'pix' : 'cartao']}`}
+                    >
+                      <ArrowRightLeft size={14} />
                     </button>
                   )}
                   {!parcelas && <button
@@ -417,12 +506,12 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
           <div className="sticky bottom-0 z-10 mt-auto grid border-t border-slate-200 bg-slate-50 font-semibold" style={{ gridTemplateColumns: template }}>
             <div />
             {check && <div />}
-            <div className="flex h-8 items-center px-2 text-slate-600">Total</div>
-            <div className="num flex h-8 items-center justify-end px-2">{numero(totalValor)}</div>
+            <div className="flex h-linha items-center px-2 text-slate-600">Total</div>
+            <div className="num flex h-linha items-center justify-end px-2">{numero(totalValor)}</div>
             {orcamento && (
               <>
-                <div className="num flex h-8 items-center justify-end px-2">{numero(totalReal)}</div>
-                <div className={`num flex h-8 items-center justify-end px-2 ${totalValor - totalReal < 0 ? 'text-red-600' : ''}`}>
+                <div className="num flex h-linha items-center justify-end px-2">{numero(totalReal)}</div>
+                <div className={`num flex h-linha items-center justify-end px-2 ${totalValor - totalReal < 0 ? 'text-red-600' : ''}`}>
                   {numero(arred(totalValor - totalReal))}
                 </div>
               </>
@@ -453,5 +542,101 @@ export function Grade({ titulo, grupo, itens, acoes, corTitulo, orcamento, check
         />
       )}
     </section>
+  )
+}
+
+function ordenar(itens: Lancamento[], col: ColunaOrdem, dir: 1 | -1): Lancamento[] {
+  const chave = chaveOrdem[col]
+  return [...itens].sort((a, b) => {
+    const x = chave(a)
+    const y = chave(b)
+    if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1
+    const c = typeof x === 'string' ? x.localeCompare(y as string, 'pt-BR', { sensitivity: 'base' }) : x - (y as number)
+    return c * dir
+  })
+}
+
+interface BarraProps {
+  visao: Visao
+  setVisao: (v: Visao | ((anterior: Visao) => Visao)) => void
+  movel: boolean
+  total: number
+  mostrando: number
+  filtros: readonly (readonly [EstadoFiltro, string])[]
+  colunas: readonly (readonly [ColunaOrdem, string])[]
+}
+
+/** Busca por nome, filtros rápidos e (no celular, onde não há cabeçalho de colunas) a ordenação */
+function Barra({ visao, setVisao, movel, total, mostrando, filtros, colunas }: BarraProps) {
+  const { ordem, texto, estado } = visao
+  const ativo = texto.trim() !== '' || estado !== 'todos'
+  if (total === 0 && !ativo) return null
+
+  const chip = (marcado: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${
+      marcado ? 'border-green-600 bg-green-50 text-green-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+    } ${movel ? 'py-1.5' : ''}`
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5">
+      <label className="relative min-w-[7rem] flex-1">
+        <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          type="search"
+          value={texto}
+          onChange={(e) => setVisao((v) => ({ ...v, texto: e.target.value }))}
+          placeholder="Filtrar por nome…"
+          aria-label="Filtrar por nome"
+          className="w-full rounded-lg border border-slate-200 bg-white py-1 pl-7 pr-2 text-xs outline-none focus:border-green-600 focus:ring-2 focus:ring-green-600/20 max-md:py-2 max-md:text-base"
+        />
+      </label>
+
+      {filtros.map(([valor, rotulo]) => (
+        <button key={valor} onClick={() => setVisao((v) => ({ ...v, estado: v.estado === valor ? 'todos' : valor }))} className={chip(estado === valor)} aria-pressed={estado === valor}>
+          {rotulo}
+        </button>
+      ))}
+
+      {movel && (
+        <div className="flex w-full items-center gap-1.5">
+          <select
+            value={ordem?.col ?? ''}
+            onChange={(e) => {
+              const col = e.target.value as ColunaOrdem | ''
+              setVisao((v) => ({ ...v, ordem: col ? { col, dir: v.ordem?.dir ?? 1 } : null }))
+            }}
+            aria-label="Ordenar por"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-base text-slate-700"
+          >
+            <option value="">Ordem manual</option>
+            {colunas.map(([col, rotulo]) => (
+              <option key={col} value={col}>
+                Ordenar por {rotulo.toLowerCase()}
+              </option>
+            ))}
+          </select>
+          {ordem && (
+            <button
+              onClick={() => setVisao((v) => (v.ordem ? { ...v, ordem: { ...v.ordem, dir: v.ordem.dir === 1 ? -1 : 1 } } : v))}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-700"
+              aria-label={ordem.dir === 1 ? 'Crescente' : 'Decrescente'}
+            >
+              {ordem.dir === 1 ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+            </button>
+          )}
+        </div>
+      )}
+
+      {ativo && (
+        <div className="flex w-full items-center justify-between text-xs text-slate-500">
+          <span>
+            Mostrando <b className="text-slate-700">{mostrando}</b> de {total}
+          </span>
+          <button onClick={() => setVisao((v) => ({ ...v, texto: '', estado: 'todos' }))} className="flex items-center gap-1 text-green-700 hover:underline">
+            <X size={12} /> Limpar filtros
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

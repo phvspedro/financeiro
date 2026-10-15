@@ -16,7 +16,14 @@ class LancamentoService
         $eraFixo = $lancamento->ehGastoFixo();
         $acompanhava = $lancamento->real !== null && abs($lancamento->real - $lancamento->valor) < 0.005;
 
+        $grupoAntes = $lancamento->grupo;
+
         $lancamento->fill($dados);
+
+        // Mudou de grupo (Cartão ↔ PIX): vai para o fim da lista do novo grupo, a menos que a ordem tenha sido informada
+        if ($lancamento->grupo !== $grupoAntes && ! array_key_exists('ordem', $dados)) {
+            $lancamento->ordem = (int) Lancamento::where('mes_id', $lancamento->mes_id)->where('grupo', $lancamento->grupo)->max('ordem') + 1;
+        }
 
         // Gasto fixo e assinatura já têm o Real preenchido (igual ao valor). Se o Real não foi informado:
         // ao virar fixo e estar em branco, é preenchido; se o valor mudar e o Real acompanhava o valor, acompanha de novo.
@@ -63,7 +70,7 @@ class LancamentoService
     /** Campos acompanhados no histórico, já normalizados para comparação */
     private function rastreados(Lancamento $l): array
     {
-        return $l->only(['nome', 'valor', 'real', 'pago', 'recorrente', 'essencial', 'variavel'])
+        return $l->only(['nome', 'valor', 'real', 'pago', 'recorrente', 'essencial', 'variavel', 'grupo'])
             + ['vencimento' => $l->vencimentoTexto(), 'parcela' => $l->parcelaTexto()];
     }
 }

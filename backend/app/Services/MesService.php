@@ -164,14 +164,14 @@ class MesService
      *
      * @return array{criados: int, atualizados: int, removidos: int, meses: int, novos_meses: list<string>}
      */
-    public function propagar(User $user, Lancamento $item, bool $comValor = false): array
+    public function propagar(User $user, Lancamento $item, bool $comValor = false, ?string $grupoAnterior = null): array
     {
         $origem = $item->mes;
         $rotulo = "Aplicou \"{$item->nome}\" aos meses seguintes";
         $continua = $item->recorrente || $item->parcela_total;
         $nome = mb_strtolower(trim($item->nome));
 
-        return DB::transaction(fn () => $this->auditoria->comLote($rotulo, function () use ($user, $item, $origem, $comValor, $continua, $nome) {
+        return DB::transaction(fn () => $this->auditoria->comLote($rotulo, function () use ($user, $item, $origem, $comValor, $continua, $nome, $grupoAnterior) {
             $total = ['criados' => 0, 'atualizados' => 0, 'removidos' => 0, 'meses' => 0, 'novos_meses' => []];
 
             $seguintes = Mes::where('user_id', $user->id)
@@ -182,9 +182,21 @@ class MesService
             foreach ($seguintes as $mes) {
                 $distancia = ($mes->competencia->year - $origem->competencia->year) * 12 + ($mes->competencia->month - $origem->competencia->month);
                 $parcela = $continua ? $item->projetar($distancia) : null;
+                $mexeu = false;
+
+                // O item mudou de grupo (Cartão ↔ PIX): leva junto o de mesmo nome que ainda está no grupo antigo
+                if ($grupoAnterior && $grupoAnterior !== $item->grupo) {
+                    $mes->lancamentos()->where('grupo', $grupoAnterior)->get()
+                        ->filter(fn (Lancamento $l) => mb_strtolower(trim($l->nome)) === $nome)
+                        ->each(function (Lancamento $l) use ($item, &$mexeu, &$total) {
+                            $this->lancamentos->atualizar($l, ['grupo' => $item->grupo]);
+                            $total['atualizados']++;
+                            $mexeu = true;
+                        });
+                }
+
                 $iguais = $mes->lancamentos()->where('grupo', $item->grupo)->get()
                     ->filter(fn (Lancamento $l) => mb_strtolower(trim($l->nome)) === $nome);
-                $mexeu = false;
 
                 if ($parcela === null) {
                     foreach ($iguais as $l) {

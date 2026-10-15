@@ -95,7 +95,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
    * o item de outros meses. Com parcelas informadas, aplica direto.
    */
   const propagar = useCallback(
-    async (item: Lancamento, perguntar = false) => {
+    async (item: Lancamento, perguntar = false, grupoAnterior?: Lancamento['grupo']) => {
       await fila.current // espera as gravações pendentes (o item precisa estar salvo)
       try {
         if (perguntar) {
@@ -104,16 +104,29 @@ export function Planilha({ ano, mes, avisar }: Props) {
           const depois = todos.filter((c) => c > atual).length
           if (!depois) return
 
-          const ok = await confirmar({
-            titulo: `Aplicar "${item.nome}" aos meses seguintes?`,
-            texto: `Já ${depois === 1 ? 'existe 1 mês' : `existem ${depois} meses`} depois deste. O item é ajustado neles para ficar igual a este (e sai dos meses em que não deveria mais aparecer). Dá para desfazer.`,
-            confirmar: 'Aplicar aos próximos meses',
-            cancelar: 'Só neste mês',
-          })
+          const existe = depois === 1 ? 'existe 1 mês' : `existem ${depois} meses`
+          const destino = item.grupo === 'pix' ? 'PIX' : 'Cartão'
+          const ok = await confirmar(
+            grupoAnterior
+              ? {
+                  titulo: `Mover "${item.nome}" para ${destino} nos meses seguintes?`,
+                  texto: `Já ${existe} depois deste. O item também é movido para ${destino} neles, para não ficar duplicado. Dá para desfazer.`,
+                  confirmar: 'Mover nos próximos meses',
+                  cancelar: 'Só neste mês',
+                }
+              : {
+                  titulo: `Aplicar "${item.nome}" aos meses seguintes?`,
+                  texto: `Já ${existe} depois deste. O item é ajustado neles para ficar igual a este (e sai dos meses em que não deveria mais aparecer). Dá para desfazer.`,
+                  confirmar: 'Aplicar aos próximos meses',
+                  cancelar: 'Só neste mês',
+                },
+          )
           if (!ok) return
         }
 
-        const { data } = await enfileirar(() => api.post<ResultadoPropagar>(`/lancamentos/${item.id}/propagar`))
+        const { data } = await enfileirar(() =>
+          api.post<ResultadoPropagar>(`/lancamentos/${item.id}/propagar`, grupoAnterior ? { grupo_anterior: grupoAnterior } : undefined),
+        )
         const novos = data.novos_meses
         const existentes = data.meses - novos.length
         const partes = [
@@ -150,6 +163,16 @@ export function Planilha({ ano, mes, avisar }: Props) {
         }
       },
       propagar: (item) => void propagar(item),
+      mover(item, destino) {
+        if (item.grupo === destino) return
+        // Vai para o fim da lista do outro grupo (o servidor aplica a mesma regra)
+        const ordem = Math.max(0, ...itens.filter((l) => l.grupo === destino).map((l) => l.ordem)) + 1
+        setItens((lista) => lista.map((l) => (l.id === item.id ? { ...l, grupo: destino, ordem } : l)))
+        enfileirar(() => api.patch(`/lancamentos/${item.id}`, { grupo: destino })).then(agendarPilha, falhou)
+        avisar(`"${item.nome}" movido para ${destino === 'pix' ? 'PIX' : 'Cartão'}. Dá para desfazer.`)
+        // Fixos e parcelados existem nos meses seguintes: pergunta se também são movidos lá
+        if (item.recorrente || item.parcela_total) void propagar({ ...item, grupo: destino, ordem }, true, item.grupo)
+      },
       atualizarVarios(alteracoes, rotulo) {
         if (!alteracoes.length) return
         const porId = new Map(alteracoes.map((a) => [a.id, a.dados]))
@@ -186,7 +209,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
         enfileirar(() => api.post('/lancamentos/reordenar', { ids })).catch(falhou)
       },
     }),
-    [url, itens, falhou, enfileirar, agendarPilha, propagar],
+    [url, itens, falhou, enfileirar, agendarPilha, propagar, avisar],
   )
 
   /** Desfazer (Ctrl+Z) e refazer (Ctrl+Y) a última ação deste mês */
@@ -272,7 +295,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
   return (
     // Em telas grandes a página ocupa exatamente a altura da janela: as tabelas rolam por dentro
     <div className={`flex flex-col gap-3 transition-opacity lg:h-full ${carregando ? 'opacity-50' : ''}`}>
-      <Resumo t={t} itens={itens} ano={ano} mes={mes} abrirEntradas={() => setEntradasAberto(true)} />
+      <Resumo t={t} itens={itens} ano={ano} mes={mes} anterior={anterior} abrirEntradas={() => setEntradasAberto(true)} />
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <p className="hidden items-center gap-1.5 text-xs text-slate-500 md:flex">
@@ -371,7 +394,7 @@ export function Planilha({ ano, mes, avisar }: Props) {
           className={abaMovel === 'cartao' ? '' : 'max-md:hidden'}
           titulo="Recorrentes Cartão"
           grupo="cartao"
-          corTitulo="bg-slate-600"
+          corTitulo="bg-gray-600"
           orcamento
           parcelas
           essencial

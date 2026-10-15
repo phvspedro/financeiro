@@ -23,7 +23,7 @@ export interface Historico {
   acao: 'criou' | 'alterou' | 'excluiu' | 'importou' | 'replicou' | 'propagou'
   grupo: Grupo | null
   nome: string | null
-  campo: 'nome' | 'valor' | 'real' | 'vencimento' | 'pago' | 'recorrente' | 'essencial' | 'variavel' | 'parcela' | null
+  campo: 'nome' | 'valor' | 'real' | 'vencimento' | 'pago' | 'recorrente' | 'essencial' | 'variavel' | 'parcela' | 'grupo' | null
   antes: string | null
   depois: string | null
   created_at: string

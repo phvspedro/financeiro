@@ -38,8 +38,10 @@ class LancamentoController extends Controller
     public function update(Request $request, Lancamento $lancamento)
     {
         $this->autorizar($request, $lancamento);
+        $dados = $request->validate($this->regras(false));
+        $this->validarMovimento($lancamento, $dados);
 
-        return $this->lancamentos->atualizar($lancamento, $request->validate($this->regras(false)));
+        return $this->lancamentos->atualizar($lancamento, $dados);
     }
 
     /**
@@ -61,6 +63,7 @@ class LancamentoController extends Controller
             foreach ($dados['itens'] as $campos) {
                 $lancamento = Lancamento::findOrFail($campos['id']);
                 $this->autorizar($request, $lancamento);
+                $this->validarMovimento($lancamento, $campos);
                 $this->lancamentos->atualizar($lancamento, collect($campos)->except('id')->all());
             }
         });
@@ -84,9 +87,14 @@ class LancamentoController extends Controller
     {
         $this->autorizar($request, $lancamento);
         // Parcelas valem o mesmo valor em todos os meses; fixo sem parcela mantém o valor de cada mês
-        $comValor = (bool) ($request->validate(['valor' => ['sometimes', 'boolean']])['valor'] ?? $lancamento->parcela_total !== null);
+        $extra = $request->validate([
+            'valor' => ['sometimes', 'boolean'],
+            // Item que acabou de mudar de grupo: nos meses seguintes ele também é movido (em vez de duplicado)
+            'grupo_anterior' => ['sometimes', Rule::in(self::GRUPOS_MOVEIS)],
+        ]);
+        $comValor = (bool) ($extra['valor'] ?? $lancamento->parcela_total !== null);
 
-        return $this->meses->propagar($request->user(), $lancamento, $comValor);
+        return $this->meses->propagar($request->user(), $lancamento, $comValor, $extra['grupo_anterior'] ?? null);
     }
 
     /** Recebe a lista de ids na nova ordem (arrastar e soltar) */
@@ -103,6 +111,20 @@ class LancamentoController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    /** Só Cartão e PIX trocam de grupo entre si (Entradas e Saídas têm colunas e regras próprias) */
+    private const GRUPOS_MOVEIS = ['cartao', 'pix'];
+
+    private function validarMovimento(Lancamento $lancamento, array $dados): void
+    {
+        if (isset($dados['grupo']) && $dados['grupo'] !== $lancamento->grupo) {
+            abort_unless(
+                in_array($dados['grupo'], self::GRUPOS_MOVEIS, true) && in_array($lancamento->grupo, self::GRUPOS_MOVEIS, true),
+                422,
+                'Só é possível mover itens entre Cartão e PIX.',
+            );
+        }
     }
 
     private function autorizar(Request $request, Lancamento $lancamento): void

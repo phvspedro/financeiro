@@ -27,7 +27,7 @@ class Historico extends Model
     }
 
     /** Campos acompanhados no histórico (parcela_atual/total viram "parcela") */
-    public const CAMPOS = ['nome', 'valor', 'real', 'vencimento', 'pago', 'recorrente', 'essencial', 'variavel', 'parcela'];
+    public const CAMPOS = ['nome', 'valor', 'real', 'vencimento', 'pago', 'recorrente', 'essencial', 'variavel', 'parcela', 'grupo'];
 
     /** Registra uma linha no lote da requisição em andamento */
     public static function registrar(Lancamento $l, string $acao, array $extra = []): self
@@ -67,13 +67,14 @@ class Historico extends Model
         return match ($l->acao) {
             'criou' => "Adicionou {$nome}",
             'excluiu' => "Excluiu {$nome}",
-            default => $acionaveis->count() > 1 || ! in_array($l->campo, ['valor', 'real', 'vencimento', 'pago', 'nome'], true)
+            default => $acionaveis->count() > 1 || ! in_array($l->campo, ['valor', 'real', 'vencimento', 'pago', 'nome', 'grupo'], true)
                 ? "Alterou {$nome}"
                 : match ($l->campo) {
                     'valor' => "Valor de {$nome}",
                     'vencimento' => "Vencimento de {$nome}",
                     'real' => "Real de {$nome}",
                     'pago' => ($l->grupo === 'entrada' ? 'Recebido: ' : 'Pago: ').$nome,
+                    'grupo' => "Moveu {$nome}",
                     default => "Renomeou {$nome}",
                 },
         };

@@ -73,7 +73,7 @@ export function TipoCelula({ r, item, ano, mes, modo, rotuloFixos, onAbrir, onNa
       data-c="tipo"
       onKeyDown={teclas}
       onClick={() => onAbrir(celula.current!)}
-      className="cell flex h-8 cursor-pointer items-center justify-center px-1"
+      className="cell flex h-linha cursor-pointer items-center justify-center px-1"
       title={modo === 'categoria' ? `${categoria.nome}: ${categoria.ajuda}. Clique para alterar.` : descricao(item, ano, mes)}
     >
       <BadgeTipo item={item} modo={modo} rotuloFixos={rotuloFixos} />
@@ -346,5 +346,5 @@ export function TipoMenu({ ancora, item, ano, mes, modo, rotuloFixos, fechar, sa
     </div>
   )
 
-  return createPortal(movel ? <div className="fixed inset-0 z-50 bg-slate-900/40">{conteudo}</div> : conteudo, document.body)
+  return createPortal(movel ? <div className="fixed inset-0 z-50 bg-black/40">{conteudo}</div> : conteudo, document.body)
 }

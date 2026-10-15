@@ -23,7 +23,7 @@ export function Modal({ titulo, subtitulo, fechar, children }: Props) {
   }, [fechar])
 
   return createPortal(
-    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-slate-900/40 md:items-center md:p-4" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-black/40 md:items-center md:p-4" onMouseDown={(e) => e.target === e.currentTarget && fechar()}>
       <div ref={caixa} role="dialog" aria-modal="true" className="w-full max-w-2xl rounded-t-2xl bg-slate-50 shadow-2xl md:rounded-2xl">
         <header className="flex items-center justify-between px-4 pb-2 pt-4 md:px-5">
           <div>

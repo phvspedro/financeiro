@@ -109,7 +109,7 @@ export function Celula({ r, c, children, textoEdicao, onSalvar, onNavegar, class
       // Clicar numa célula já selecionada também edita (prático no celular)
       onMouseDown={() => (jaFocada.current = document.activeElement === celula.current)}
       onClick={() => !editando && jaFocada.current && editar(textoEdicao)}
-      className={`cell flex h-8 items-center px-2 outline-none ${alin} ${className}`}
+      className={`cell flex h-linha items-center px-2 outline-none ${alin} ${className}`}
     >
       {editando ? (
         <input
@@ -129,7 +129,7 @@ export function Celula({ r, c, children, textoEdicao, onSalvar, onNavegar, class
             if (rascunho === textoEdicao) e.target.select()
             else e.target.setSelectionRange(rascunho.length, rascunho.length)
           }}
-          className={`num -mx-1 h-7 w-full rounded-sm bg-white px-1 text-sm outline-none ring-2 ${erro ? 'ring-red-500' : 'ring-green-600'} ${alin}`}
+          className={`num -mx-1 h-[calc(var(--altura-linha,2rem)-0.25rem)] w-full rounded-sm bg-white px-1 text-sm outline-none ring-2 ${erro ? 'ring-red-500' : 'ring-green-600'} ${alin}`}
         />
       ) : (
         children

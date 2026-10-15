@@ -1,7 +1,7 @@
 import { ArrowDownCircle, ArrowUpCircle, BarChart3, CalendarClock, ChevronDown, ChevronUp, Clock, Lock, Pencil, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { arred, brl, numero, pagoNoMes, restante, terminaEm, tipoDe, type Totais } from '../lib/money'
-import type { Lancamento } from '../lib/types'
+import { arred, brl, chaveItem, numero, pagoNoMes, restante, terminaEm, tipoDe, type Totais } from '../lib/money'
+import type { Grupo, Lancamento, ValoresAnteriores } from '../lib/types'
 import { useMovel } from '../lib/useMovel'
 
 /** Barra "para onde vai o dinheiro": quanto da entrada vai para cartão, PIX e quanto sobra */
@@ -158,6 +158,137 @@ function Parcelados({ itens, ano, mes, total }: { itens: Lancamento[]; ano: numb
   )
 }
 
+interface Causa {
+  nome: string
+  dif: number
+  /** 'novo': não existia no mês anterior · 'saiu': não existe mais */
+  situacao: 'novo' | 'saiu' | null
+}
+
+interface Comparacao {
+  grupo: Grupo
+  rotulo: string
+  /** Para entradas, subir é bom; para o resto, subir é gasto a mais */
+  subirEhBom: boolean
+  antes: number
+  agora: number
+  dif: number
+  pct: number | null
+  causas: Causa[]
+}
+
+const GRUPOS_COMPARADOS: { grupo: Grupo; rotulo: string; subirEhBom: boolean }[] = [
+  { grupo: 'saida', rotulo: 'Saídas', subirEhBom: false },
+  { grupo: 'cartao', rotulo: 'Cartão', subirEhBom: false },
+  { grupo: 'pix', rotulo: 'PIX', subirEhBom: false },
+  { grupo: 'entrada', rotulo: 'Entradas', subirEhBom: true },
+]
+
+const inicial = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
+/** Compara o valor lançado de cada item com o do mês anterior (a chave do mapa é "grupo|nome em minúsculas") */
+function compararComAnterior(itens: Lancamento[], anterior: ValoresAnteriores): Comparacao[] {
+  return GRUPOS_COMPARADOS.map(({ grupo, rotulo, subirEhBom }) => {
+    const antes = new Map<string, number>()
+    for (const [chave, valor] of Object.entries(anterior)) {
+      if (chave.startsWith(`${grupo}|`)) antes.set(chave, (antes.get(chave) ?? 0) + valor)
+    }
+    const agora = new Map<string, { nome: string; valor: number }>()
+    for (const l of itens.filter((i) => i.grupo === grupo)) {
+      const c = chaveItem(l)
+      agora.set(c, { nome: l.nome, valor: (agora.get(c)?.valor ?? 0) + l.valor })
+    }
+
+    const totalAntes = arred([...antes.values()].reduce((s, v) => s + v, 0))
+    const totalAgora = arred([...agora.values()].reduce((s, v) => s + v.valor, 0))
+    const causas: Causa[] = [...new Set([...antes.keys(), ...agora.keys()])]
+      .map((c) => {
+        const a = antes.get(c)
+        const n = agora.get(c)
+        return {
+          nome: n?.nome ?? inicial(c.split('|')[1]),
+          dif: arred((n?.valor ?? 0) - (a ?? 0)),
+          situacao: a === undefined ? 'novo' : n === undefined ? 'saiu' : null,
+        } satisfies Causa
+      })
+      .filter((c) => Math.abs(c.dif) >= 0.01)
+      // Primeiro o que mais pesou no sentido do mês: quem gastou mais, as altas; quem gastou menos, as quedas
+      .sort((x, y) => Math.abs(y.dif) - Math.abs(x.dif))
+
+    const dif = arred(totalAgora - totalAntes)
+    return {
+      grupo,
+      rotulo,
+      subirEhBom,
+      antes: totalAntes,
+      agora: totalAgora,
+      dif,
+      pct: totalAntes > 0 ? (dif / totalAntes) * 100 : null,
+      causas: causas.filter((c) => Math.sign(c.dif) === Math.sign(dif) || dif === 0).slice(0, 3),
+    }
+  })
+}
+
+const sinal = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '')
+const pctTexto = (c: Comparacao) => (c.pct === null ? '' : `${sinal(c.dif)}${Math.abs(Math.round(c.pct))}%`)
+/** Verde para o que melhora a situação (entrada sobe, gasto desce), vermelho para o contrário */
+const corDif = (c: Comparacao) => (c.dif === 0 ? 'text-slate-500' : c.dif > 0 === c.subirEhBom ? 'text-green-700' : 'text-red-600')
+
+function textoCausas(c: Comparacao) {
+  return c.causas.map((x) => `${x.nome} ${sinal(x.dif)}${brl(Math.abs(x.dif))}${x.situacao === 'novo' ? ' (novo)' : x.situacao === 'saiu' ? ' (saiu)' : ''}`).join(' · ')
+}
+
+/** Uma linha sempre visível: o que mudou nas saídas em relação ao mês anterior e por quê */
+function ResumoComparativo({ comparacoes, abrir }: { comparacoes: Comparacao[]; abrir: () => void }) {
+  const saidas = comparacoes[0]
+  if (saidas.antes === 0 && saidas.agora === 0) return null
+
+  return (
+    <button onClick={abrir} className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-white px-3 py-1.5 text-left text-xs ring-1 ring-slate-200 hover:ring-green-500" title="Ver o comparativo completo com o mês anterior">
+      <span className="font-semibold uppercase tracking-wide text-slate-500">vs mês anterior</span>
+      {saidas.dif === 0 ? (
+        <span className="text-slate-600">Saídas iguais ({brl(saidas.agora)})</span>
+      ) : (
+        <span className="text-slate-700">
+          Saídas <b className={`num ${corDif(saidas)}`}>{pctTexto(saidas)} ({sinal(saidas.dif)}{brl(Math.abs(saidas.dif))})</b>
+        </span>
+      )}
+      {saidas.causas.length > 0 && saidas.dif !== 0 && <span className="min-w-0 flex-1 truncate text-slate-500">principais causas: {textoCausas(saidas)}</span>}
+    </button>
+  )
+}
+
+/** Cartão no painel de detalhes: todos os grupos, com total anterior, variação e principais causas */
+function Comparativo({ comparacoes }: { comparacoes: Comparacao[] }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Comparado ao mês anterior</div>
+      <ul className="space-y-2.5 text-sm">
+        {comparacoes.map((c) => (
+          <li key={c.grupo}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="font-medium text-slate-700">{c.rotulo}</span>
+              <span className="num text-xs text-slate-500">
+                {brl(c.antes)} → <b className="text-slate-800">{brl(c.agora)}</b>
+              </span>
+            </div>
+            {c.dif === 0 ? (
+              <div className="text-xs text-slate-400">{c.antes === 0 ? 'Sem lançamentos' : 'Sem mudança'}</div>
+            ) : (
+              <>
+                <div className={`num text-xs font-semibold ${corDif(c)}`}>
+                  {pctTexto(c)} {c.pct !== null && '·'} {sinal(c.dif)}{brl(Math.abs(c.dif))}
+                </div>
+                {c.causas.length > 0 && <div className="text-xs text-slate-500">Principais causas: {textoCausas(c)}</div>}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 const CHAVE_DETALHES = 'financeiro.resumoDetalhes'
 
 function Tile({ titulo, valor, ajuda, cor, icone, children, onClick }: { titulo: string; valor: number; ajuda: string; cor?: string; icone?: ReactNode; children?: ReactNode; onClick?: () => void }) {
@@ -179,7 +310,7 @@ function Tile({ titulo, valor, ajuda, cor, icone, children, onClick }: { titulo:
   )
 }
 
-export function Resumo({ t, itens, ano, mes, abrirEntradas }: { t: Totais; itens: Lancamento[]; ano: number; mes: number; abrirEntradas: () => void }) {
+export function Resumo({ t, itens, ano, mes, anterior, abrirEntradas }: { t: Totais; itens: Lancamento[]; ano: number; mes: number; anterior: ValoresAnteriores; abrirEntradas: () => void }) {
   const movel = useMovel()
   // No celular os totais secundários ficam recolhidos para as tabelas aparecerem logo
   const [mais, setMais] = useState(false)
@@ -191,6 +322,18 @@ export function Resumo({ t, itens, ano, mes, abrirEntradas }: { t: Totais; itens
       return false
     }
   })
+
+  const temAnterior = Object.keys(anterior).length > 0
+  const comparacoes = temAnterior ? compararComAnterior(itens, anterior) : null
+
+  function abrirDetalhes() {
+    setDetalhes(true)
+    try {
+      localStorage.setItem(CHAVE_DETALHES, '1')
+    } catch {
+      /* sem armazenamento: só não lembra a escolha */
+    }
+  }
 
   function alternar() {
     setDetalhes(!detalhes)
@@ -243,8 +386,11 @@ export function Resumo({ t, itens, ano, mes, abrirEntradas }: { t: Totais; itens
         </button>
       </div>
 
+      {comparacoes && !detalhes && <ResumoComparativo comparacoes={comparacoes} abrir={abrirDetalhes} />}
+
       {detalhes && (
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+          {comparacoes && <Comparativo comparacoes={comparacoes} />}
           <Composicao t={t} />
           <Fixos t={t} />
           <Parcelados itens={itens} ano={ano} mes={mes} total={t.parcelados} />
